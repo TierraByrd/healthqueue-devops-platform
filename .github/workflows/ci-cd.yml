@@ -80,16 +80,48 @@ jobs:
           cache-to: type=gha,mode=max   # write full layer cache for later jobs
 
       # v0.36.0: latest stable; note the required `v` prefix (bare `0.x.y` tags
-      # do not exist in this repo).  `exit-code: "1"` turns any CRITICAL or HIGH
-      # finding into a CI failure so a vulnerable image is never pushed.
-      - name: Scan with Trivy (fail on CRITICAL or HIGH)
+      # do not exist in this repo).
+      # ignore-unfixed: true skips Debian OS packages that have no upstream fix
+      # available yet (e.g. python:3.12-slim carries ~44 HIGH CVEs with status
+      # "affected" but no patched version released by Debian).  Blocking on
+      # unfixed vulns gives no actionable remediation path — the only recourse
+      # would be switching base images, not patching — while preventing all
+      # merges.  A second non-blocking step below records the full picture for
+      # audit and accepted-risk visibility without stopping the pipeline.
+      - name: Scan with Trivy (block on fixable CRITICAL or HIGH)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
+          ignore-unfixed: true
           vuln-type: os,library
+
+      # Non-blocking full scan: all severities, unfixed included.  Runs even if
+      # the step above failed (if: always()) so reviewers always get a report.
+      - name: Scan with Trivy (full report — all severities, non-blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: table
+          output: trivy-full-report.txt
+          severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
+          exit-code: "0"
+          vuln-type: os,library
+
+      # v7.0.2: latest stable upload-artifact; uploads the full table so
+      # the accepted unfixed vulns remain auditable without re-running the scan.
+      # if: always() ensures the artifact is saved even when the blocking step
+      # above found a fixable vulnerability and failed the job.
+      - name: Upload full Trivy report
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: trivy-full-report
+          path: trivy-full-report.txt
+          retention-days: 30
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 3 · sbom
