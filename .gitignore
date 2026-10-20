@@ -5,3 +5,10 @@ venv/
 .venv/
 .env
 .DS_Store
+
+# OpenTofu / Terraform — ignore state, keep lock files
+.terraform/
+*.tfstate
+*.tfstate.backup
+# .terraform.lock.hcl is intentionally NOT ignored so provider version pins
+# are committed and reproducible across machines.
