@@ -26,15 +26,15 @@ jobs:
       contents: read          # checkout only; no token write needed
 
     steps:
-      # v4.2.2: latest stable v4; drops deprecated Node 16 runtime and adds
-      # improved sparse-checkout helpers over earlier v4 releases.
+      # v7.0.1: latest stable; v7 is the current major series with the most
+      # recent runner compatibility fixes and security patches.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
 
-      # v5.3.0: first v5 release with free-threaded Python 3.13 support; also
-      # adds the `cache: pip` shortcut that avoids a separate cache action.
+      # v7.0.0: latest stable v7; retains the `cache: pip` shortcut and
+      # Python 3.12 support needed here.
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5.3.0
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -58,19 +58,19 @@ jobs:
       contents: read          # checkout only; image is never pushed in this job
 
     steps:
-      # v4.2.2: same reasoning as the test job; pinned for consistency.
+      # v7.0.1: consistent pin across all jobs.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
 
-      # v3.7.1: ships Buildx v0.17, which introduced the `type=gha` cache
-      # backend used here to share build layers across jobs without a registry.
+      # v4.4.1: latest stable v4; ships the current Buildx release and retains
+      # the `type=gha` cache backend used to share layers across jobs.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.7.1
+        uses: docker/setup-buildx-action@v4.4.1
 
-      # v6.9.0: latest stable v6; outputs `digest` and `imageid`; supports the
+      # v7.4.0: latest stable v7; outputs `digest` and `imageid`; supports the
       # `type=gha` cache exporter needed for cross-job layer reuse.
       - name: Build image (local only — no push)
-        uses: docker/build-push-action@v6.9.0
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           push: false
@@ -79,12 +79,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max   # write full layer cache for later jobs
 
-      # 0.24.0: last stable release with CVSS v3 severity filtering and the
-      # `vuln-type` split between OS packages and language libraries.
-      # `exit-code: "1"` turns a finding into a CI failure; the pipeline stops
-      # here rather than pushing a known-vulnerable image.
+      # v0.36.0: latest stable; note the required `v` prefix (bare `0.x.y` tags
+      # do not exist in this repo).  `exit-code: "1"` turns any CRITICAL or HIGH
+      # finding into a CI failure so a vulnerable image is never pushed.
       - name: Scan with Trivy (fail on CRITICAL or HIGH)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: table
@@ -106,18 +105,18 @@ jobs:
       contents: read          # checkout only
 
     steps:
-      # v4.2.2: consistent pin across all jobs.
+      # v7.0.1: consistent pin across all jobs.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
 
-      # v3.7.1: needed to restore the GHA build cache from job 2.
+      # v4.4.1: needed to restore the GHA build cache from job 2.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.7.1
+        uses: docker/setup-buildx-action@v4.4.1
 
-      # v6.9.0: restores layers from GHA cache so the rebuild is near-instant.
+      # v7.4.0: restores layers from GHA cache so the rebuild is near-instant.
       # No `cache-to` here — we only read the cache, never overwrite it mid-run.
       - name: Build image (for SBOM scan)
-        uses: docker/build-push-action@v6.9.0
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           push: false
@@ -125,12 +124,12 @@ jobs:
           tags: ${{ env.IMAGE_NAME }}:sbom
           cache-from: type=gha
 
-      # v0.17.9: bundles Syft 1.x engine; supports SPDX JSON output natively.
-      # Setting `artifact-name` causes the action to call @actions/artifact
-      # internally and upload the file as a workflow artifact automatically —
+      # v0.24.3: latest stable; bundles Syft 1.x engine; supports SPDX JSON
+      # output natively.  Setting `artifact-name` causes the action to upload
+      # the file as a workflow artifact automatically via @actions/artifact —
       # no separate upload-artifact step required.
       - name: Generate SPDX SBOM with Syft
-        uses: anchore/sbom-action@v0.17.9
+        uses: anchore/sbom-action@v0.24.3
         with:
           image: ${{ env.IMAGE_NAME }}:sbom
           format: spdx-json
@@ -153,18 +152,19 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}   # sha256:... passed to the sign job
 
     steps:
-      # v4.2.2: consistent pin.
+      # v7.0.1: consistent pin.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
 
-      # v3.7.1: Buildx needed for GHA cache restore and multi-platform capability.
+      # v4.4.1: Buildx needed for GHA cache restore and multi-platform capability.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.7.1
+        uses: docker/setup-buildx-action@v4.4.1
 
-      # v3.3.0: stores credentials in the runner's Docker config.json rather
-      # than an env var, keeping the token out of the process environment.
+      # v4.6.0: latest stable v4; stores credentials in the runner's Docker
+      # config.json rather than an env var, keeping the token out of the
+      # process environment.
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -173,12 +173,12 @@ jobs:
         id: meta
         run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # v6.9.0: `push: true` ships the image to Docker Hub and emits `digest`
+      # v7.4.0: `push: true` ships the image to Docker Hub and emits `digest`
       # (sha256:...) as an output, which the sign job uses to reference the
       # exact immutable image rather than a mutable tag.
       - name: Build and push
         id: push
-        uses: docker/build-push-action@v6.9.0
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           push: true
@@ -206,19 +206,19 @@ jobs:
       attestations: write  # actions/attest-build-provenance: write to GH attestation store
 
     steps:
-      # v4.2.2: consistent pin.
+      # v7.0.1: consistent pin.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
 
-      # v3.6.0: pins the Cosign 2.x binary; v3 dropped all Cosign 1.x flag
-      # aliases that would silently accept insecure signing options.
+      # v4.1.2: latest stable v4; pins the current Cosign 2.x binary; v4 is
+      # the current major series with up-to-date Sigstore library versions.
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.6.0
+        uses: sigstore/cosign-installer@v4.1.2
 
-      # v3.3.0: re-authenticate so this job can push the Cosign signature
+      # v4.6.0: re-authenticate so this job can push the Cosign signature
       # bundle and the SBOM attestation back to Docker Hub.
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -234,11 +234,11 @@ jobs:
           cosign sign --yes \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
 
-      # v4.1.7: v4 uses a different artifact format than v3; the artifact was
-      # uploaded by anchore/sbom-action (which also uses v4 internally), so
-      # download must use the same major version to avoid format mismatch.
+      # v8.0.2: latest stable v8; must match the major version used internally
+      # by anchore/sbom-action when it uploaded the artifact, to avoid artifact
+      # format incompatibility across major versions.
       - name: Download SBOM artifact
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v8.0.2
         with:
           name: healthqueue-sbom.spdx.json
           path: .
@@ -254,12 +254,12 @@ jobs:
             --type spdxjson \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
 
-      # v1.4.3: stable v1 release; generates a SLSA Build Level 2 provenance
-      # statement describing this specific workflow run and uploads it both to
-      # the GitHub attestation store and (via push-to-registry) to Docker Hub
-      # as an OCI referrer, so `cosign verify-attestation` can retrieve it.
+      # v4.2.2: latest stable v4; generates a SLSA Build Level 2 provenance
+      # statement describing this workflow run and uploads it both to the GitHub
+      # attestation store and (via push-to-registry) to Docker Hub as an OCI
+      # referrer, so `cosign verify-attestation` can retrieve it.
       - name: Generate SLSA build provenance
-        uses: actions/attest-build-provenance@v1.4.3
+        uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ needs.push.outputs.digest }}
