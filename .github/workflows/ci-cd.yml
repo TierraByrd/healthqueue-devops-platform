@@ -1,0 +1,266 @@
+name: HealthQueue CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# No top-level permissions block — each job declares only what it needs,
+# preventing any job from accidentally inheriting write access it doesn't require.
+
+env:
+  # index.docker.io is the canonical Docker Hub registry host Cosign expects.
+  REGISTRY: index.docker.io
+  IMAGE_NAME: tierrab/healthqueue-api
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 · test
+# Run the pytest suite on Python 3.12.  Triggered on every push and PR.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  test:
+    name: "1 · Test"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # checkout only; no token write needed
+
+    steps:
+      # v4.2.2: latest stable v4; drops deprecated Node 16 runtime and adds
+      # improved sparse-checkout helpers over earlier v4 releases.
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      # v5.3.0: first v5 release with free-threaded Python 3.13 support; also
+      # adds the `cache: pip` shortcut that avoids a separate cache action.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 · build-and-scan
+# Build the Docker image locally (no push) then gate on Trivy finding any
+# CRITICAL or HIGH CVE.  Triggered on every push and PR.
+# ─────────────────────────────────────────────────────────────────────────────
+  build-and-scan:
+    name: "2 · Build & Scan"
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # checkout only; image is never pushed in this job
+
+    steps:
+      # v4.2.2: same reasoning as the test job; pinned for consistency.
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      # v3.7.1: ships Buildx v0.17, which introduced the `type=gha` cache
+      # backend used here to share build layers across jobs without a registry.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      # v6.9.0: latest stable v6; outputs `digest` and `imageid`; supports the
+      # `type=gha` cache exporter needed for cross-job layer reuse.
+      - name: Build image (local only — no push)
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: .
+          push: false
+          load: true          # loads image into the runner's Docker daemon
+          tags: ${{ env.IMAGE_NAME }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max   # write full layer cache for later jobs
+
+      # 0.24.0: last stable release with CVSS v3 severity filtering and the
+      # `vuln-type` split between OS packages and language libraries.
+      # `exit-code: "1"` turns a finding into a CI failure; the pipeline stops
+      # here rather than pushing a known-vulnerable image.
+      - name: Scan with Trivy (fail on CRITICAL or HIGH)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          vuln-type: os,library
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 3 · sbom
+# Generate an SPDX JSON SBOM from the container image using Syft, then upload
+# it as a workflow artifact so the sign job can attach it as an attestation.
+# Triggered on every push and PR.
+# ─────────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: "3 · SBOM"
+    needs: build-and-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # checkout only
+
+    steps:
+      # v4.2.2: consistent pin across all jobs.
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      # v3.7.1: needed to restore the GHA build cache from job 2.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      # v6.9.0: restores layers from GHA cache so the rebuild is near-instant.
+      # No `cache-to` here — we only read the cache, never overwrite it mid-run.
+      - name: Build image (for SBOM scan)
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:sbom
+          cache-from: type=gha
+
+      # v0.17.9: bundles Syft 1.x engine; supports SPDX JSON output natively.
+      # Setting `artifact-name` causes the action to call @actions/artifact
+      # internally and upload the file as a workflow artifact automatically —
+      # no separate upload-artifact step required.
+      - name: Generate SPDX SBOM with Syft
+        uses: anchore/sbom-action@v0.17.9
+        with:
+          image: ${{ env.IMAGE_NAME }}:sbom
+          format: spdx-json
+          output-file: healthqueue-sbom.spdx.json
+          artifact-name: healthqueue-sbom.spdx.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 4 · push
+# Build the final image and push it to Docker Hub tagged with the short commit
+# SHA and `latest`.  Runs on pushes to main only — skipped on PRs.
+# ─────────────────────────────────────────────────────────────────────────────
+  push:
+    name: "4 · Push to Docker Hub"
+    needs: sbom
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # Docker Hub credentials come from secrets, not GITHUB_TOKEN
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}   # sha256:... passed to the sign job
+
+    steps:
+      # v4.2.2: consistent pin.
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      # v3.7.1: Buildx needed for GHA cache restore and multi-platform capability.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      # v3.3.0: stores credentials in the runner's Docker config.json rather
+      # than an env var, keeping the token out of the process environment.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve short commit SHA
+        id: meta
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # v6.9.0: `push: true` ships the image to Docker Hub and emits `digest`
+      # (sha256:...) as an output, which the sign job uses to reference the
+      # exact immutable image rather than a mutable tag.
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6.9.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 5 · sign
+# 1. Cosign keyless-signs the image digest using GitHub OIDC (no long-lived key).
+# 2. Attaches the SBOM from job 3 as a Cosign attestation on the same digest.
+# 3. Generates SLSA Build Level 2 provenance via actions/attest-build-provenance.
+# Runs on pushes to main only — skipped on PRs.
+# ─────────────────────────────────────────────────────────────────────────────
+  sign:
+    name: "5 · Sign & Attest"
+    needs: push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # Cosign keyless: runner exchanges this for a Fulcio CA cert
+      attestations: write  # actions/attest-build-provenance: write to GH attestation store
+
+    steps:
+      # v4.2.2: consistent pin.
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      # v3.6.0: pins the Cosign 2.x binary; v3 dropped all Cosign 1.x flag
+      # aliases that would silently accept insecure signing options.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.6.0
+
+      # v3.3.0: re-authenticate so this job can push the Cosign signature
+      # bundle and the SBOM attestation back to Docker Hub.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Keyless signing: Cosign obtains an ephemeral signing key, requests a
+      # short-lived certificate from Fulcio (bound to this workflow's OIDC
+      # identity), signs the digest, and records the entry in Rekor (public
+      # transparency log).  No long-lived private key is stored anywhere.
+      - name: Sign image digest with Cosign (keyless / GitHub OIDC)
+        env:
+          DIGEST: ${{ needs.push.outputs.digest }}
+        run: |
+          cosign sign --yes \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+
+      # v4.1.7: v4 uses a different artifact format than v3; the artifact was
+      # uploaded by anchore/sbom-action (which also uses v4 internally), so
+      # download must use the same major version to avoid format mismatch.
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: healthqueue-sbom.spdx.json
+          path: .
+
+      # Attaches the SPDX SBOM as an in-toto attestation on the same digest
+      # that was signed above, making it verifiable alongside the signature.
+      - name: Attach SBOM as Cosign attestation
+        env:
+          DIGEST: ${{ needs.push.outputs.digest }}
+        run: |
+          cosign attest --yes \
+            --predicate healthqueue-sbom.spdx.json \
+            --type spdxjson \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+
+      # v1.4.3: stable v1 release; generates a SLSA Build Level 2 provenance
+      # statement describing this specific workflow run and uploads it both to
+      # the GitHub attestation store and (via push-to-registry) to Docker Hub
+      # as an OCI referrer, so `cosign verify-attestation` can retrieve it.
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@v1.4.3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.push.outputs.digest }}
+          push-to-registry: true
