@@ -3,6 +3,10 @@ name: HealthQueue CI/CD
 on:
   push:
     branches: [main]
+    # Skip when only k8s/, argocd/, infra/, or docs/ changed — those edits
+    # don't affect the app image, so running a full build/scan/push would
+    # waste compute and risk a spurious image push that wasn't triggered by
+    # an app code change.
     paths-ignore:
       - 'k8s/**'
       - 'argocd/**'
@@ -19,10 +23,15 @@ on:
 # No top-level permissions block — each job declares only what it needs,
 # preventing any job from accidentally inheriting write access it doesn't require.
 
+# All action refs are pinned to exact semver tags rather than floating `@v7`
+# or `@main` aliases.  A compromised action author who silently rewrites a
+# major-version tag could otherwise execute arbitrary code in every run;
+# pinning to an immutable release tag closes that supply-chain vector.
+
 env:
   # index.docker.io is the canonical Docker Hub registry host Cosign expects.
   REGISTRY: index.docker.io
-  IMAGE_NAME: tierrab/healthqueue-api
+  IMAGE_NAME: tierrab/healthqueue-platform
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 1 · test
@@ -186,6 +195,9 @@ jobs:
   push:
     name: "4 · Push to Docker Hub"
     needs: sbom
+    # Only publish on merges to main, not on PRs.  Publishing a PR branch
+    # image would expose unreviewed code on Docker Hub and could overwrite
+    # production tags if branch names collide with SHA prefixes.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -240,6 +252,9 @@ jobs:
   sign:
     name: "5 · Sign & Attest"
     needs: push
+    # Signing requires the `id-token: write` permission (GitHub OIDC) and a
+    # real image digest from the push job, both of which are only available
+    # after a successful merge to main.  There is nothing to sign on a PR.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

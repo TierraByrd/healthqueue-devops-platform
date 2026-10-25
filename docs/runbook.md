@@ -14,7 +14,7 @@
 |---|---|---|
 | Application | `healthqueue` namespace, 2 pods | `kubectl get pods -n healthqueue` |
 | GitOps | Argo CD `argocd` namespace | `kubectl get app healthqueue -n argocd` or Argo CD UI |
-| Image registry | Docker Hub `tierrab/healthqueue-api` | Docker Hub web or `docker pull tierrab/healthqueue-api:<sha>` |
+| Image registry | Docker Hub `tierrab/healthqueue-platform` | Docker Hub web or `docker pull tierrab/healthqueue-platform:<sha>` |
 | State backend | LocalStack S3 `healthqueue-tofu-state` | `aws --endpoint-url http://localhost:4566 s3 ls` |
 | App infrastructure | LocalStack S3/DynamoDB/SQS | `aws --endpoint-url http://localhost:4566 s3 ls`, `dynamodb list-tables`, `sqs list-queues` |
 
@@ -92,7 +92,7 @@ Note the commit SHA of the previous working `image:` tag. Cross-reference with D
 
 ```bash
 # Manual step: check Docker Hub for the previous tag
-# Example: curl -s https://hub.docker.com/v2/repositories/tierrab/healthqueue-api/tags/<sha>
+# Example: curl -s https://hub.docker.com/v2/repositories/tierrab/healthqueue-platform/tags/<sha>
 ```
 
 ### Step 2 — Revert the Deployment manifest **[Manual step]**

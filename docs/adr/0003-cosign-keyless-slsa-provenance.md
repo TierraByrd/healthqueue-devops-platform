@@ -22,15 +22,15 @@ Two questions need answers at verification time:
 
 **Cosign keyless signing** (CI job 5, `sigstore/cosign-installer@v4.1.2`) combined with **SLSA provenance** (`actions/attest-build-provenance@v4.2.2`):
 
-1. Cosign requests an ephemeral signing certificate from Sigstore Fulcio, bound to the GitHub Actions OIDC identity (`repo:TierraByrd/TierraB-Week7Assignment:ref:refs/heads/main`).
+1. Cosign requests an ephemeral signing certificate from Sigstore Fulcio, bound to the GitHub Actions OIDC identity (`repo:TierraByrd/TierraB-Week8CareerPortfolio:ref:refs/heads/main`).
 2. The image is signed **by digest** (`sha256:...`), not by tag.
 3. The SBOM from job 3 is attached as a separate Cosign in-toto attestation on the same digest.
 4. `actions/attest-build-provenance` generates a SLSA Build Level 2 provenance statement — recording the source repository, commit SHA, workflow ref, and runner environment — and uploads it to both the GitHub attestation store and Docker Hub as an OCI referrer.
 
 Verification command:
 ```
-gh attestation verify oci://index.docker.io/tierrab/healthqueue-api:aa90b49 \
-  --repo TierraByrd/TierraB-Week7Assignment
+gh attestation verify oci://index.docker.io/tierrab/healthqueue-platform:aa90b49 \
+  --repo TierraByrd/TierraB-Week8CareerPortfolio
 ```
 
 ---

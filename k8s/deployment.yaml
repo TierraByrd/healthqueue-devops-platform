@@ -13,27 +13,50 @@ spec:
       labels:
         app: healthqueue-api
       annotations:
+        # These three annotations tell a Prometheus server configured with
+        # kubernetes_sd_configs (role: pod) where to scrape metrics, without
+        # requiring a ServiceMonitor CRD.  Prometheus discovers pods by label
+        # and then reads these annotations to build the scrape target.
         prometheus.io/scrape: "true"
         prometheus.io/path: /metrics
         prometheus.io/port: "5000"
     spec:
       securityContext:
+        # Cluster-level enforcement that the pod cannot run as root, even if
+        # the image's USER directive is somehow overridden at deploy time.
         runAsNonRoot: true
+        # Must match the UID created in the Dockerfile (useradd --uid 1001)
+        # so file permissions set by chown -R appuser are honoured at runtime.
         runAsUser: 1001
       containers:
         - name: healthqueue-api
-          image: tierrab/healthqueue-api:aa90b49
+          # SHA tag makes this an immutable reference: Argo CD detects a diff
+          # when the tag changes, which is what triggers a rollout.  Using
+          # `latest` would not create a diff and pods would keep the old image.
+          image: tierrab/healthqueue-platform:aa90b49
           ports:
             - containerPort: 5000
           securityContext:
+            # Prevents setuid/setgid binaries inside the container from
+            # acquiring capabilities beyond what the process started with.
             allowPrivilegeEscalation: false
+            # With a read-only root filesystem an attacker cannot write exploit
+            # tools, modify app code, or create persistent backdoors at runtime.
             readOnlyRootFilesystem: true
+          # Liveness: kubelet restarts the container if /health stops responding.
+          # initialDelaySeconds: 10 gives gunicorn time to fully bind before
+          # the first check — a false kill on slow startup would cause a
+          # restart loop that makes the outage worse, not better.
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
             initialDelaySeconds: 10
             periodSeconds: 15
+          # Readiness: kubelet removes the pod from Service endpoints until it
+          # passes.  initialDelaySeconds: 5 is shorter than liveness because
+          # it is safe to delay traffic a few seconds, but there is no risk of
+          # a restart loop — only temporary exclusion from load balancing.
           readinessProbe:
             httpGet:
               path: /health
@@ -41,9 +64,15 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
+            # requests: the scheduler uses these to find a node with enough
+            # free capacity.  Under-requesting risks co-location with noisy
+            # neighbours; over-requesting wastes cluster capacity.
             requests:
               cpu: 100m
               memory: 128Mi
+            # limits: the kernel enforces these at runtime.  A memory limit
+            # prevents one pod from triggering an OOM kill on the whole node;
+            # a CPU limit prevents it from starving other pods on the same core.
             limits:
               cpu: 500m
               memory: 256Mi
@@ -51,5 +80,10 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        # readOnlyRootFilesystem: true blocks writes everywhere except
+        # explicitly mounted volumes.  Gunicorn writes worker temp files to
+        # /tmp, so an emptyDir is mounted there.  emptyDir is ephemeral
+        # (wiped when the pod is deleted) and pod-scoped (not shared with
+        # other pods), so it does not create a persistence or cross-pod risk.
         - name: tmp
           emptyDir: {}

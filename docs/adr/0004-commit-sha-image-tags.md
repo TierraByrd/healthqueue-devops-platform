@@ -20,7 +20,7 @@ The team experienced an issue during initial setup where two builds from differe
 
 ## Decision
 
-Tag every pushed image with the 7-character short commit SHA (e.g., `tierrab/healthqueue-api:aa90b49`) using the `${{ github.sha }}` expression:
+Tag every pushed image with the 7-character short commit SHA (e.g., `tierrab/healthqueue-platform:aa90b49`) using the `${{ github.sha }}` expression:
 
 ```yaml
 - name: Resolve short commit SHA
@@ -31,14 +31,14 @@ Tag every pushed image with the 7-character short commit SHA (e.g., `tierrab/hea
   uses: docker/build-push-action@v7.4.0
   with:
     tags: |
-      index.docker.io/tierrab/healthqueue-api:${{ steps.meta.outputs.short_sha }}
-      index.docker.io/tierrab/healthqueue-api:latest
+      index.docker.io/tierrab/healthqueue-platform:${{ steps.meta.outputs.short_sha }}
+      index.docker.io/tierrab/healthqueue-platform:latest
 ```
 
-The `latest` tag is still pushed as a convenience for humans pulling the image manually (`docker pull tierrab/healthqueue-api`). However, the `k8s/deployment.yaml` manifest references the SHA tag, not `latest`:
+The `latest` tag is still pushed as a convenience for humans pulling the image manually (`docker pull tierrab/healthqueue-platform`). However, the `k8s/deployment.yaml` manifest references the SHA tag, not `latest`:
 
 ```yaml
-image: tierrab/healthqueue-api:aa90b49
+image: tierrab/healthqueue-platform:aa90b49
 ```
 
 Argo CD watches the manifest in Git. When a new commit is merged, CI pushes a new SHA-tagged image, a subsequent step (or a developer) updates the `image:` field in `k8s/deployment.yaml`, and Argo CD syncs the change.
@@ -51,7 +51,7 @@ Argo CD watches the manifest in Git. When a new commit is merged, CI pushes a ne
 |---|---|
 | **`latest` tag only in the Deployment manifest** | Argo CD does not detect a change when the tag string is unchanged; pods are not rolled over to the new image without a manual restart. Violates the GitOps principle that the Git state fully describes what is running. |
 | **`imagePullPolicy: Always` + `latest` tag** | Forces the kubelet to pull on every pod start, but Argo CD still does not trigger a rollout on a new push; this only helps when a pod is manually restarted or rescheduled. |
-| **Digest-only references in the Deployment** | Using `image: tierrab/healthqueue-api@sha256:...` is the most immutable option and is used by Cosign for signing. However, updating a 64-character digest in a YAML file every deploy is error-prone; the SHA tag is a human-readable compromise that maps uniquely to a commit. |
+| **Digest-only references in the Deployment** | Using `image: tierrab/healthqueue-platform@sha256:...` is the most immutable option and is used by Cosign for signing. However, updating a 64-character digest in a YAML file every deploy is error-prone; the SHA tag is a human-readable compromise that maps uniquely to a commit. |
 | **Semantic version tags (e.g., `v1.2.3`)** | Requires a versioning decision and a Git tag step; adds overhead for a project that ships on every merge. SemVer is more appropriate when the API has external consumers with compatibility requirements. |
 
 ---
@@ -60,7 +60,7 @@ Argo CD watches the manifest in Git. When a new commit is merged, CI pushes a ne
 
 **Positive:**
 - Every tag is globally unique and traces directly to a commit in Git history.
-- `git log --oneline` and `docker pull tierrab/healthqueue-api:<sha>` give a deterministic audit trail.
+- `git log --oneline` and `docker pull tierrab/healthqueue-platform:<sha>` give a deterministic audit trail.
 - Argo CD reliably detects changes: updating the `image:` field in `k8s/deployment.yaml` is a diff that triggers a sync.
 - Old images are preserved on Docker Hub under their SHA tags; rollback is `git revert` + `ci` without needing a rebuild.
 

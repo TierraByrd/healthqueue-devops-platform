@@ -22,13 +22,13 @@
 |---|---|
 | Builds run on a hosted build service | All jobs run on `ubuntu-latest` GitHub-hosted runners. No self-hosted or developer-machine builds are in the pipeline. |
 | Provenance is authenticated | The provenance statement is signed by GitHub's OIDC-based Sigstore Fulcio CA, bound to this repository's workflow identity. |
-| Provenance can be verified | `gh attestation verify` against the image digest confirms the signature chain. Example: `gh attestation verify oci://index.docker.io/tierrab/healthqueue-api:aa90b49 --repo TierraByrd/TierraB-Week7Assignment` |
+| Provenance can be verified | `gh attestation verify` against the image digest confirms the signature chain. Example: `gh attestation verify oci://index.docker.io/tierrab/healthqueue-platform:aa90b49 --repo TierraByrd/TierraB-Week8CareerPortfolio` |
 
 **Verification output (reference):**
 ```
 Loaded digest: sha256:<digest>
 Verified 1 attestation(s) against the repository policy.
-  * Subject: index.docker.io/tierrab/healthqueue-api@sha256:<digest>
+  * Subject: index.docker.io/tierrab/healthqueue-platform@sha256:<digest>
   * Predicate type: https://slsa.dev/provenance/v1
 ```
 
@@ -50,7 +50,7 @@ SLSA Level 3 requires the build environment itself to be hardened and reproducib
 ## 2. Vulnerability Scanning — Trivy
 
 **Tool:** `aquasecurity/trivy-action@v0.36.0`  
-**Scope:** OS packages and Python libraries in the final image (`tierrab/healthqueue-api:aa90b49`)
+**Scope:** OS packages and Python libraries in the final image (`tierrab/healthqueue-platform:aa90b49`)
 
 ### Blocking vs. Non-Blocking Strategy
 
@@ -89,13 +89,13 @@ The SBOM lists every package in the image layer — OS packages from Debian slim
 ### Signing Process
 
 1. The runner presents its GitHub OIDC token to Sigstore Fulcio.
-2. Fulcio issues a short-lived X.509 certificate bound to the workflow identity (`repo:TierraByrd/TierraB-Week7Assignment:ref:refs/heads/main`).
+2. Fulcio issues a short-lived X.509 certificate bound to the workflow identity (`repo:TierraByrd/TierraB-Week8CareerPortfolio:ref:refs/heads/main`).
 3. Cosign signs the image **by digest** (not by tag) and records the signature in the Rekor transparency log.
 4. The SBOM is attached as a separate Cosign attestation on the same digest.
 
 ### Why by Digest, Not by Tag
 
-Tags are mutable. `tierrab/healthqueue-api:aa90b49` could be overwritten by another `docker push` command. Signing by digest (`sha256:...`) pins the signature to the exact immutable byte sequence of the image. The signature is meaningless if the image bytes change — this is the guarantee.
+Tags are mutable. `tierrab/healthqueue-platform:aa90b49` could be overwritten by another `docker push` command. Signing by digest (`sha256:...`) pins the signature to the exact immutable byte sequence of the image. The signature is meaningless if the image bytes change — this is the guarantee.
 
 ### No Long-Lived Secrets
 

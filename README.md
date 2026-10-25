@@ -52,8 +52,8 @@ There's a more detailed diagram in [docs/architecture.md](docs/architecture.md).
 ```bash
 pip install -r requirements.txt
 pytest
-docker build -t healthqueue-api:local .
-docker run -d -p 5050:5000 healthqueue-api:local
+docker build -t healthqueue-platform:local .
+docker run -d -p 5050:5000 healthqueue-platform:local
 curl http://localhost:5050/health
 ```
 
@@ -80,7 +80,7 @@ kubectl get pods -n healthqueue
 This confirms the release was built by this repo's pipeline and hasn't been tampered with.
 
 ```bash
-gh attestation verify oci://docker.io/tierrab/healthqueue-api:latest --owner TierraByrd
+gh attestation verify oci://docker.io/tierrab/healthqueue-platform:latest --owner TierraByrd
 ```
 
 ## Documents

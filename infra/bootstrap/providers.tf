@@ -12,7 +12,10 @@ terraform {
 # everything else will use for remote state, so it cannot itself use remote
 # state (chicken-and-egg).
 provider "aws" {
-  region     = "us-east-1"
+  region = "us-east-1"
+  # "test"/"test" are LocalStack's well-known placeholder credentials — not
+  # real AWS keys.  LocalStack ignores credential values; the skip_* flags
+  # below prevent the provider from attempting real-AWS validation.
   access_key = "test"
   secret_key = "test"
 
