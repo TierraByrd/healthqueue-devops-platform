@@ -10,7 +10,7 @@
 flowchart TD
     dev["Developer\nworkstation"]
 
-    subgraph github["GitHub (TierraByrd/TierraB-Week7Assignment)"]
+    subgraph github["GitHub (TierraByrd/TierraB-Week8CareerPortfolio)"]
         repo["Git repository\nbranch: main"]
         ci["GitHub Actions\nci-cd.yml"]
 
@@ -24,7 +24,7 @@ flowchart TD
     end
 
     subgraph registry["Docker Hub (index.docker.io)"]
-        dh["tierrab/healthqueue-api\ntagged :aa90b49 (short SHA)"]
+        dh["tierrab/healthqueue-platform\ntagged :aa90b49 (short SHA)"]
         sig["Cosign signature\n+ SBOM attestation"]
     end
 
@@ -104,7 +104,7 @@ flowchart TD
 
 | Component | What it does | Why it was chosen |
 |---|---|---|
-| **Docker Hub** (`tierrab/healthqueue-api`) | Stores the container image tagged with the short commit SHA (`aa90b49`). Cosign signature and SBOM attestation are stored as OCI referrers on the same registry. | Default public registry; free for public repositories; natively supported by Argo CD and Cosign. |
+| **Docker Hub** (`tierrab/healthqueue-platform`) | Stores the container image tagged with the short commit SHA (`aa90b49`). Cosign signature and SBOM attestation are stored as OCI referrers on the same registry. | Default public registry; free for public repositories; natively supported by Argo CD and Cosign. |
 
 ### GitOps Delivery
 

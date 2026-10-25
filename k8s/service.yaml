@@ -4,10 +4,18 @@ metadata:
   name: healthqueue-api
   namespace: healthqueue
 spec:
+  # ClusterIP exposes the Service only inside the cluster.  External traffic
+  # is not expected in this setup — Argo CD, Prometheus, and in-cluster
+  # clients reach the API via cluster DNS.  NodePort or LoadBalancer would
+  # expose port 80 to the node network unnecessarily.
   type: ClusterIP
   selector:
     app: healthqueue-api
   ports:
+      # port 80: conventional HTTP port for in-cluster consumers; keeps
+      # curl calls simple (no port suffix needed).
+      # targetPort 5000: gunicorn is bound here; a non-root process cannot
+      # bind to privileged ports (< 1024) without extra Linux capabilities.
     - port: 80
       targetPort: 5000
       protocol: TCP

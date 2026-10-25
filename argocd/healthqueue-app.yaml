@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/TierraByrd/healthqueue-pipeline
+    repoURL: https://github.com/TierraByrd/healthqueue-devops-platform
     targetRevision: main
     path: k8s
   destination:
@@ -14,7 +14,17 @@ spec:
     namespace: healthqueue
   syncPolicy:
     automated:
+      # prune: true deletes cluster resources that have been removed from k8s/
+      # in Git.  Without it, old Deployments, Services, or ConfigMaps would
+      # accumulate silently and consume cluster resources.
       prune: true
+      # selfHeal: true reverts manual kubectl changes (e.g., kubectl edit,
+      # kubectl scale) back to the Git-defined state within ~3 minutes.
+      # This enforces Git as the single source of truth and prevents
+      # out-of-band fixes from becoming permanent undocumented state.
       selfHeal: true
     syncOptions:
+      # CreateNamespace=true lets Argo CD create the healthqueue namespace on
+      # a fresh cluster so a separate `kubectl apply -f k8s/namespace.yaml`
+      # bootstrap step is not required before the first sync.
       - CreateNamespace=true
