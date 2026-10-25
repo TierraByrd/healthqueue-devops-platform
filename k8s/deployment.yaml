@@ -33,7 +33,7 @@ spec:
           # SHA tag makes this an immutable reference: Argo CD detects a diff
           # when the tag changes, which is what triggers a rollout.  Using
           # `latest` would not create a diff and pods would keep the old image.
-          image: tierrab/healthqueue-platform:aa90b49
+          image: tierrab/healthqueue-platform:96dbd5d
           ports:
             - containerPort: 5000
           securityContext:
