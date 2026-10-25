@@ -85,6 +85,7 @@ gh attestation verify oci://docker.io/tierrab/healthqueue-platform:latest --owne
 
 ## Documents
 
+- [Case Study](docs/case-study.md): the full story of the project, the decisions behind it, challenges, results, and what's next
 - [Architecture](docs/architecture.md): how the pieces fit together and why each tool was picked
 - [Reliability Plan](docs/observability-plan.md): uptime goals, the downtime budget, and how we'd monitor the app
 - [DORA Baseline](docs/dora-baseline.md): how often we release, how fast, how often releases break, and how fast we recover
