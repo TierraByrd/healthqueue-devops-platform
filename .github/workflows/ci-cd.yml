@@ -3,8 +3,18 @@ name: HealthQueue CI/CD
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'k8s/**'
+      - 'argocd/**'
+      - 'infra/**'
+      - 'docs/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'k8s/**'
+      - 'argocd/**'
+      - 'infra/**'
+      - 'docs/**'
 
 # No top-level permissions block — each job declares only what it needs,
 # preventing any job from accidentally inheriting write access it doesn't require.
